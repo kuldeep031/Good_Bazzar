@@ -11,6 +11,7 @@ import { PaymentSuccess } from "@/components/PaymentSuccess";
 import { useAuth } from "@/contexts/AuthContext";
 import { vendorApi } from "@/services/vendorApi";
 import { orderApi } from "@/services/orderApi";
+import { vendorProductGroupApi } from "@/services/vendorProductGroupApi";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { 
@@ -21,7 +22,7 @@ import {
   calculateGroupDiscount,
   PAYMENT_METHODS
 } from "@/lib/razorpay";
-import { fetchProductGroups } from "@/lib/productGroupApi";
+import { fetchProductGroups, updateProductGroupCurrentQuantity } from "@/lib/productGroupApi";
 
 const VendorDashboard = () => {
   const { user, logout } = useAuth();
@@ -32,6 +33,8 @@ const VendorDashboard = () => {
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [joinQuantity, setJoinQuantity] = useState(0);
+  const [isIncreasingQuantity, setIsIncreasingQuantity] = useState(false); // Track if we're increasing existing quantity
+  const [currentVendorGroupEntry, setCurrentVendorGroupEntry] = useState(null); // Store existing entry details
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState(null);
   const [showGroupSuggestionsModal, setShowGroupSuggestionsModal] = useState(false);
@@ -89,6 +92,9 @@ const VendorDashboard = () => {
   // Order-related states
   const [vendorOrders, setVendorOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
+  
+  // Vendor group participation tracking
+  const [joinedGroups, setJoinedGroups] = useState(new Set());
 
   // Auto-detect location on component mount
   useEffect(() => {
@@ -131,11 +137,23 @@ const VendorDashboard = () => {
         });
       } catch (error) {
         console.error('Error fetching vendor profile:', error);
-        toast({
-          title: "Error",
-          description: "Failed to load profile data. Please refresh the page.",
-          variant: "destructive"
-        });
+        
+        // Check if it's a 404 error (vendor not found)
+        if (error.message?.includes('404') || error.status === 404) {
+          toast({
+            title: "Profile Setup Required",
+            description: "Please complete your vendor profile setup to continue.",
+            variant: "default"
+          });
+          // Redirect to vendor profile setup page
+          navigate('/vendor/profile-setup');
+        } else {
+          toast({
+            title: "Error",
+            description: "Failed to load profile data. Please refresh the page.",
+            variant: "destructive"
+          });
+        }
       } finally {
         setProfileLoading(false);
       }
@@ -292,10 +310,33 @@ const VendorDashboard = () => {
     }
   };
 
+  // Fetch vendor's joined groups
+  const fetchJoinedGroups = async () => {
+    if (!vendorProfile?.id) return;
+    
+    try {
+      console.log('🔍 Fetching joined groups for vendor:', vendorProfile.id);
+      const joinedGroupsResponse = await vendorProductGroupApi.getAll({
+        vendor_id: vendorProfile.id.toString()
+      });
+      
+      const joinedGroupIds = new Set(
+        joinedGroupsResponse.map(entry => entry.group_id)
+      );
+      
+      console.log('✅ Vendor has joined groups:', Array.from(joinedGroupIds));
+      setJoinedGroups(joinedGroupIds);
+    } catch (error) {
+      console.error('⚠️ Error fetching joined groups:', error);
+      // Don't show error to user, just log it
+    }
+  };
+
   // Fetch vendor orders when vendor profile is loaded
   useEffect(() => {
     if (vendorProfile?.id) {
       fetchVendorOrders();
+      fetchJoinedGroups();
     }
   }, [vendorProfile]);
 
@@ -639,9 +680,47 @@ const VendorDashboard = () => {
     return distance;
   };
 
-  const handleJoinGroup = (group) => {
+  const handleJoinGroup = async (group) => {
     setSelectedGroup(group);
     setJoinQuantity(0);
+    setIsIncreasingQuantity(false);
+    setCurrentVendorGroupEntry(null);
+    setShowJoinModal(true);
+  };
+
+  const handleIncreaseQuantity = async (group) => {
+    setSelectedGroup(group);
+    setIsIncreasingQuantity(true);
+    
+    try {
+      // Fetch the existing vendor group entry
+      console.log('🔍 Fetching existing vendor group entry...');
+      const existingEntries = await vendorProductGroupApi.getAll({
+        vendor_id: vendorProfile.id.toString(),
+        group_id: group.id.toString()
+      });
+      
+      if (existingEntries && existingEntries.length > 0) {
+        const entry = existingEntries[0];
+        setCurrentVendorGroupEntry(entry);
+        setJoinQuantity(0); // Start with 0 additional quantity
+        console.log('✅ Found existing entry:', entry);
+      } else {
+        console.log('⚠️ No existing entry found, treating as new join');
+        setIsIncreasingQuantity(false);
+        setCurrentVendorGroupEntry(null);
+        setJoinQuantity(0);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching existing entry:', error);
+      toast({
+        title: "Error",
+        description: "Could not load your existing order details. Please try again.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
     setShowJoinModal(true);
   };
 
@@ -866,7 +945,7 @@ const VendorDashboard = () => {
     handleJoinGroupPayment(group, quantity);
   };
 
-  const confirmJoinGroup = () => {
+  const confirmJoinGroup = async () => {
     if (joinQuantity <= 0) {
       toast({
         title: "Invalid Quantity",
@@ -896,8 +975,338 @@ const VendorDashboard = () => {
       return;
     }
 
-    handleJoinGroupPayment(selectedGroup, joinQuantity);
+    if (!vendorProfile?.id) {
+      toast({
+        title: "Profile Not Loaded",
+        description: "Please wait for your profile to load before joining a group.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      if (isIncreasingQuantity && currentVendorGroupEntry) {
+        // Handle quantity increase for existing entry
+        await handleQuantityIncrease();
+      } else {
+        // Handle new group join
+        await handleNewGroupJoin();
+      }
+    } catch (error) {
+      console.error('❌ Error in confirmJoinGroup:', error);
+      
+      // Handle specific error cases
+      if (error.message && error.message.includes('409')) {
+        toast({
+          title: "Already Joined",
+          description: `You have already joined this group order for ${selectedGroup.product}. Check your orders to see the status.`,
+          variant: "default"
+        });
+      } else if (error.message && error.message.includes('unique constraint')) {
+        toast({
+          title: "Already Joined",
+          description: `You have already joined this group order. Check your orders tab for details.`,
+          variant: "default"
+        });
+      } else {
+        toast({
+          title: isIncreasingQuantity ? "Failed to Increase Quantity" : "Failed to Join Group",
+          description: error.message || "Please try again later.",
+          variant: "destructive"
+        });
+      }
+      
+      // Close the modal regardless of error type
+      setShowJoinModal(false);
+      setSelectedGroup(null);
+      setJoinQuantity(0);
+      setIsIncreasingQuantity(false);
+      setCurrentVendorGroupEntry(null);
+    }
   };
+
+  const handleQuantityIncrease = async () => {
+    console.log('� Increasing quantity for existing entry...');
+    
+    // Calculate new totals
+    const pricePerKg = parseInt(selectedGroup.pricePerKg.replace('₹', ''));
+    const newTotalQuantity = currentVendorGroupEntry.quantity + joinQuantity;
+    const newSubtotal = newTotalQuantity * pricePerKg;
+    const newGroupDiscount = calculateGroupDiscount(newSubtotal, selectedGroup.discount);
+    const newDiscountedAmount = newSubtotal - newGroupDiscount;
+    const newDiscountPerUnit = newGroupDiscount / newTotalQuantity;
+    const newFinalPrice = newDiscountedAmount;
+
+    console.log('💰 New pricing calculation:', {
+      previousQuantity: currentVendorGroupEntry.quantity,
+      additionalQuantity: joinQuantity,
+      newTotalQuantity,
+      newFinalPrice
+    });
+
+    // Update vendor_product_groups entry
+    const updatedVendorGroupData = {
+      discount_per_unit: newDiscountPerUnit,
+      quantity: newTotalQuantity,
+      final_price: newFinalPrice,
+      status: 'pending'
+    };
+
+    console.log('🔄 Updating vendor product group entry:', updatedVendorGroupData);
+    const updateResponse = await vendorProductGroupApi.update(currentVendorGroupEntry.id, updatedVendorGroupData);
+    console.log('✅ Vendor product group updated:', updateResponse);
+
+    // Create a new order for the additional quantity
+    const orderItems = [{
+      name: selectedGroup.product,
+      quantity: joinQuantity, // Only the additional quantity
+      pricePerKg: pricePerKg,
+      subtotal: joinQuantity * pricePerKg
+    }];
+
+    const customerDetails = {
+      name: userDetails.name || vendorProfile.full_name,
+      email: userDetails.email || vendorProfile.primary_email || '',
+      phone: userDetails.phone || vendorProfile.mobile_number,
+      address: currentLocation?.name || vendorProfile.stall_address
+    };
+
+    const additionalSubtotal = joinQuantity * pricePerKg;
+    const additionalDiscount = calculateGroupDiscount(additionalSubtotal, selectedGroup.discount);
+    const additionalDiscountedAmount = additionalSubtotal - additionalDiscount;
+
+    const orderData = {
+      id: generateOrderId('group'),
+      vendor_id: vendorProfile.id,
+      supplier_id: selectedGroup.created_by,
+      order_type: 'group' as 'group',
+      items: orderItems,
+      subtotal: additionalSubtotal,
+      tax: calculateTax(additionalDiscountedAmount),
+      delivery_charge: 0,
+      group_discount: additionalDiscount,
+      total_amount: additionalDiscountedAmount + calculateTax(additionalDiscountedAmount),
+      status: 'pending',
+      payment_status: 'pending',
+      payment_method: null,
+      payment_id: null,
+      delivery_address: customerDetails.address,
+      delivery_date: null,
+      notes: `Additional quantity order - Total quantity now: ${newTotalQuantity}kg`,
+      customer_details: customerDetails
+    };
+
+    console.log('📋 Creating additional quantity order:', orderData);
+    const orderResponse = await orderApi.create(orderData);
+    console.log('✅ Additional quantity order created:', orderResponse);
+
+    // Step 3: Update current_quantity in product_groups table
+    console.log('📊 Updating current_quantity in product_groups table...');
+    const currentQuantityResponse = await updateProductGroupCurrentQuantity(selectedGroup.id, joinQuantity);
+    console.log('✅ Current quantity updated:', currentQuantityResponse);
+
+    // Check if group is now full
+    if (currentQuantityResponse.isFull) {
+      console.log('🎯 Group is now FULL! No more vendors can join.');
+    }
+
+    // Close modal and show success message
+    setShowJoinModal(false);
+    setSelectedGroup(null);
+    setJoinQuantity(0);
+    setIsIncreasingQuantity(false);
+    setCurrentVendorGroupEntry(null);
+
+    toast({
+      title: "Quantity Increased Successfully!",
+      description: `Added ${joinQuantity}kg to your order for ${selectedGroup.product}. Total quantity is now ${newTotalQuantity}kg.${currentQuantityResponse.isFull ? ' Group is now FULL!' : ''}`,
+      variant: "default"
+    });
+
+    // Refresh the orders list and group data
+    fetchVendorOrders();
+    // Refresh product groups to show updated current_quantity
+    window.location.reload(); // Simple refresh to update group data
+  };
+
+  const handleNewGroupJoin = async () => {
+    console.log('🆕 Handling new group join...');
+    
+    try {
+      // Check if vendor has already joined this group (double-check)
+      try {
+        const existingEntries = await vendorProductGroupApi.getAll({
+          vendor_id: vendorProfile.id.toString(),
+          group_id: selectedGroup.id.toString()
+        });
+        
+        if (existingEntries && existingEntries.length > 0) {
+          toast({
+            title: "Already Joined",
+            description: `You have already joined this group order for ${selectedGroup.product}. Check your orders tab to see the status.`,
+            variant: "default"
+          });
+          setShowJoinModal(false);
+          return;
+        }
+      } catch (checkError) {
+        console.log('⚠️ Could not check existing entries, proceeding with join:', checkError);
+      }
+
+    // Calculate pricing details (same as before, but for storage instead of payment)
+    const pricePerKg = parseInt(selectedGroup.pricePerKg.replace('₹', ''));
+    const subtotal = joinQuantity * pricePerKg;
+    const groupDiscount = calculateGroupDiscount(subtotal, selectedGroup.discount);
+    const discountedAmount = subtotal - groupDiscount;
+    const discountPerUnit = groupDiscount / joinQuantity; // Discount per unit
+    const finalPrice = discountedAmount; // Total final price for this vendor's quantity
+    // Note: maximum_price will be set equal to final_price in backend
+
+    console.log('💰 Calculated pricing:', {
+      pricePerKg,
+      quantity: joinQuantity,
+      subtotal,
+      groupDiscount,
+      discountPerUnit,
+      finalPrice
+    });
+
+    // Step 1: Store vendor's participation in vendor_product_groups table
+    const vendorGroupData = {
+      vendor_id: vendorProfile.id,
+      group_id: selectedGroup.id,
+      discount_per_unit: discountPerUnit,
+      // maximum_price will be automatically set to final_price in backend
+      quantity: joinQuantity,
+      final_price: finalPrice,
+      status: 'pending'
+    };
+
+    console.log('🔗 Creating vendor product group entry:', vendorGroupData);
+    const vendorGroupResponse = await vendorProductGroupApi.create(vendorGroupData);
+    console.log('✅ Vendor product group created:', vendorGroupResponse);
+
+    // Step 2: Create a pending order in the orders table
+    const orderItems = [{
+      name: selectedGroup.product,
+      quantity: joinQuantity,
+      pricePerKg: pricePerKg,
+      subtotal: subtotal
+    }];
+
+    const customerDetails = {
+      name: userDetails.name || vendorProfile.full_name,
+      email: userDetails.email || vendorProfile.primary_email || '',
+      phone: userDetails.phone || vendorProfile.mobile_number,
+      address: currentLocation?.name || vendorProfile.stall_address
+    };
+
+    const orderData = {
+      id: generateOrderId('group'),
+      vendor_id: vendorProfile.id,
+      supplier_id: selectedGroup.created_by,
+      order_type: 'group' as 'group',
+      items: orderItems,
+      subtotal: subtotal,
+      tax: calculateTax(discountedAmount),
+      delivery_charge: 0,
+      group_discount: groupDiscount,
+      total_amount: finalPrice + calculateTax(discountedAmount),
+      status: 'pending',
+      payment_status: 'pending',
+      payment_method: null,
+      payment_id: null,
+      delivery_address: customerDetails.address,
+      delivery_date: null,
+      notes: `Group order participation - Vendor Group Entry ID: ${vendorGroupResponse.data.id}`,
+      customer_details: customerDetails
+    };
+
+    console.log('📋 Creating pending order:', orderData);
+    const orderResponse = await orderApi.create(orderData);
+    console.log('✅ Pending order created:', orderResponse);
+
+    // Update the current_quantity in the product_groups table
+    try {
+      console.log('📊 Updating product group current_quantity...');
+      await productGroupApi.updateProductGroupCurrentQuantity(selectedGroup.id, joinQuantity);
+      console.log('✅ Product group current_quantity updated successfully');
+      
+      // Check if group is now full
+      const updatedCurrentQuantity = selectedGroup.current_quantity + joinQuantity;
+      if (updatedCurrentQuantity >= selectedGroup.target_quantity) {
+        toast({
+          title: "Group is Now Full!",
+          description: `The group for ${selectedGroup.product} has reached its target quantity and is ready for bulk ordering.`,
+          variant: "default"
+        });
+      }
+    } catch (quantityError) {
+      console.error('❌ Error updating product group current_quantity:', quantityError);
+      // Don't block the main flow, just log the error
+      toast({
+        title: "Warning",
+        description: "Order created successfully, but there was an issue updating group quantity. Please contact support.",
+        variant: "destructive"
+      });
+    }
+
+    // Update joined groups state
+    setJoinedGroups(prev => new Set([...prev, selectedGroup.id]));
+
+    // Close modal and show success message
+    setShowJoinModal(false);
+    setSelectedGroup(null);
+    setJoinQuantity(0);
+    setIsIncreasingQuantity(false);
+    setCurrentVendorGroupEntry(null);
+
+    toast({
+      title: "Successfully Joined Group!",
+      description: `You've joined the group order for ${selectedGroup.product}. Payment is pending - you'll be contacted for payment processing.`,
+      variant: "default"
+    });
+
+    // Refresh the orders list to show the new pending order
+    fetchVendorOrders();
+    
+    // Refresh the group orders to reflect updated current_quantity
+    setTimeout(() => {
+      fetchGroupOrders();
+    }, 1000);
+
+  } catch (error) {
+    console.error('❌ Error joining group:', error);
+    
+    // Handle specific error cases
+    if (error.message && error.message.includes('409')) {
+      toast({
+        title: "Already Joined",
+        description: `You have already joined this group order for ${selectedGroup.product}. Check your orders to see the status.`,
+        variant: "destructive"
+      });
+    } else if (error.message && error.message.includes('unique constraint')) {
+      toast({
+        title: "Already Joined",
+        description: `You have already joined this group order. You can increase your quantity instead.`,
+        variant: "destructive"
+      });
+    } else {
+      toast({
+        title: "Error Joining Group",
+        description: error.message || "Please try again later.",
+        variant: "destructive"
+      });
+    }
+
+    // Close modal on error
+    setShowJoinModal(false);
+    setSelectedGroup(null);
+    setJoinQuantity(0);
+    setIsIncreasingQuantity(false);
+    setCurrentVendorGroupEntry(null);
+  }
+};
 
   // Filter group orders based on location and other criteria
   const getFilteredGroupOrders = () => {
@@ -2061,6 +2470,13 @@ const VendorDashboard = () => {
                         >
                           ✅ Full
                         </button>
+                      ) : joinedGroups.has(order.id) ? (
+                        <button 
+                          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition-colors" 
+                          onClick={() => handleIncreaseQuantity(order)}
+                        >
+                          ✅ Increase Quantity
+                        </button>
                       ) : (
                         <button 
                           className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-medium transition-colors" 
@@ -2559,12 +2975,21 @@ const VendorDashboard = () => {
                       <div className="w-full h-2 bg-gray-200 rounded mb-3">
                         <div className="h-2 bg-green-500 rounded transition-all" style={{ width: `${progress}%` }} />
                       </div>
-                      <button 
-                        className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-medium transition-colors"
-                        onClick={() => handleJoinGroupOrder({...selectedGroup, product: groupProduct.product, pricePerKg: groupProduct.pricePerKg}, 5)}
-                      >
-                        Join This Group
-                      </button>
+                      {progress >= 100 ? (
+                        <button 
+                          className="w-full bg-gray-400 text-white py-2 rounded-lg font-medium cursor-not-allowed" 
+                          disabled
+                        >
+                          ✅ Full
+                        </button>
+                      ) : (
+                        <button 
+                          className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-medium transition-colors"
+                          onClick={() => handleJoinGroupOrder({...selectedGroup, product: groupProduct.product, pricePerKg: groupProduct.pricePerKg}, 5)}
+                        >
+                          Join This Group
+                        </button>
+                      )}
                     </div>
                   );
                 })}

@@ -7,6 +7,7 @@ const { initializeDatabase } = require('./initialize-db');
 const vendorRoutes = require('./routes/vendor');
 const supplierRoutes = require('./routes/supplier');
 const productGroupRoutes = require('./routes/productGroup');
+const vendorProductGroupRoutes = require('./routes/vendorProductGroup');
 const productRoutes = require('./routes/product');
 const orderRoutes = require('./routes/order');
 
@@ -28,7 +29,7 @@ app.use(cors({
     'https://web-dev-code-champs-kappa.vercel.app/' // Vercel deployment with trailing slash
   ],
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
@@ -49,6 +50,7 @@ app.use((req, res, next) => {
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/suppliers', supplierRoutes);
 app.use('/api/product-groups', productGroupRoutes);
+app.use('/api/vendor-product-groups', vendorProductGroupRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 
@@ -85,6 +87,8 @@ async function startServer() {
       console.log(`Health check available at: http://localhost:${PORT}/api/health`);
       console.log(`Vendors API available at: http://localhost:${PORT}/api/vendors`);
       console.log(`Suppliers API available at: http://localhost:${PORT}/api/suppliers`);
+      console.log(`Product Groups API available at: http://localhost:${PORT}/api/product-groups`);
+      console.log(`Vendor Product Groups API available at: http://localhost:${PORT}/api/vendor-product-groups`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);

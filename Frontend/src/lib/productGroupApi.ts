@@ -46,4 +46,26 @@ export async function updateProductGroupStatus(id: number, status: 'accepted' | 
   const result = await res.json();
   console.log(`API success response:`, result);
   return result;
+}
+
+export async function updateProductGroupCurrentQuantity(id: number, quantityToAdd: number) {
+  console.log(`📊 Updating current_quantity for group ${id}, adding ${quantityToAdd}`);
+  
+  const res = await fetch(`${API_BASE}/${id}/current-quantity`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ quantityToAdd }),
+  });
+  
+  console.log(`📊 API response status: ${res.status}`);
+  
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error(`❌ API error response: ${errorText}`);
+    throw new Error(`Failed to update current quantity: ${res.status} ${errorText}`);
+  }
+  
+  const result = await res.json();
+  console.log(`✅ Current quantity updated successfully:`, result);
+  return result;
 } 

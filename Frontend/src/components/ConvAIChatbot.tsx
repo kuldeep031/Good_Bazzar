@@ -84,7 +84,7 @@ const ConvAIChatbot: React.FC = () => {
         }
       }
     };
-  }, [isLoginOrSignup]);
+  }, [isLoginOrSignup, location.pathname]); // Add location.pathname to dependencies
 
   // Only render the chatbot widget if NOT on login or signup pages
   if (isLoginOrSignup) {

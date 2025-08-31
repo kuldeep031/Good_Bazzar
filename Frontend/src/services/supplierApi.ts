@@ -30,6 +30,9 @@ export interface SupplierProfile {
   organicCertification?: string;
   isoCertification?: string;
   exportLicense?: string;
+  // New Business Pricing Fields
+  minimumQuantity?: string;
+  discountPerUnit?: string;
 }
 
 export interface SupplierResponse {

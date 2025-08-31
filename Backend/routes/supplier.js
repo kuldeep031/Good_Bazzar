@@ -14,7 +14,9 @@ router.post('/', async (req, res) => {
       // Additional fields
       gstNumber, licenseNumber, yearsInBusiness, employeeCount,
       primaryEmail, whatsappBusiness,
-      foodSafetyLicense, organicCertification, isoCertification, exportLicense
+      foodSafetyLicense, organicCertification, isoCertification, exportLicense,
+      // New pricing fields
+      minimumQuantity, discountPerUnit
     } = req.body;
 
     // Validation
@@ -54,15 +56,17 @@ router.post('/', async (req, res) => {
         preferred_delivery_time, latitude, longitude,
         gst_number, license_number, years_in_business, employee_count,
         primary_email, whatsapp_business,
-        food_safety_license, organic_certification, iso_certification, export_license
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+        food_safety_license, organic_certification, iso_certification, export_license,
+        minimum_quantity, discount_per_unit
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       [
         firebaseUserId || null, fullName, mobileNumber, languagePreference, businessName || '', businessAddress,
         city, pincode, state, businessType, supplyCapabilitiesJson,
         preferredDeliveryTime, latitude || '', longitude || '',
         gstNumber || '', licenseNumber || '', yearsInBusiness || '', employeeCount || '',
         primaryEmail || '', whatsappBusiness || '',
-        foodSafetyLicense || '', organicCertification || '', isoCertification || '', exportLicense || ''
+        foodSafetyLicense || '', organicCertification || '', isoCertification || '', exportLicense || '',
+        minimumQuantity || '', discountPerUnit || ''
       ]
     );
 
@@ -96,7 +100,9 @@ router.post('/', async (req, res) => {
         foodSafetyLicense,
         organicCertification,
         isoCertification,
-        exportLicense
+        exportLicense,
+        minimumQuantity,
+        discountPerUnit
       }
     });
   } catch (err) {
@@ -189,7 +195,10 @@ router.get('/by-user/:firebaseUserId', async (req, res) => {
       foodSafetyLicense: rawSupplier.food_safety_license || '',
       organicCertification: rawSupplier.organic_certification || '',
       isoCertification: rawSupplier.iso_certification || '',
-      exportLicense: rawSupplier.export_license || ''
+      exportLicense: rawSupplier.export_license || '',
+      // New pricing fields
+      minimumQuantity: rawSupplier.minimum_quantity || '',
+      discountPerUnit: rawSupplier.discount_per_unit || ''
     };
     
     res.json({ supplier });
@@ -210,7 +219,9 @@ router.put('/:id', async (req, res) => {
       // Additional fields
       gstNumber, licenseNumber, yearsInBusiness, employeeCount,
       primaryEmail, whatsappBusiness,
-      foodSafetyLicense, organicCertification, isoCertification, exportLicense
+      foodSafetyLicense, organicCertification, isoCertification, exportLicense,
+      // New pricing fields
+      minimumQuantity, discountPerUnit
     } = req.body;
 
     // Check if supplier exists
@@ -229,7 +240,8 @@ router.put('/:id', async (req, res) => {
         supply_capabilities = ?, preferred_delivery_time = ?, latitude = ?, longitude = ?,
         gst_number = ?, license_number = ?, years_in_business = ?, employee_count = ?,
         primary_email = ?, whatsapp_business = ?,
-        food_safety_license = ?, organic_certification = ?, iso_certification = ?, export_license = ?
+        food_safety_license = ?, organic_certification = ?, iso_certification = ?, export_license = ?,
+        minimum_quantity = ?, discount_per_unit = ?
       WHERE id = ?`,
       [
         fullName, mobileNumber, languagePreference, businessName || '', businessAddress,
@@ -238,6 +250,7 @@ router.put('/:id', async (req, res) => {
         gstNumber || '', licenseNumber || '', yearsInBusiness || '', employeeCount || '',
         primaryEmail || '', whatsappBusiness || '',
         foodSafetyLicense || '', organicCertification || '', isoCertification || '', exportLicense || '',
+        minimumQuantity || '', discountPerUnit || '',
         id
       ]
     );

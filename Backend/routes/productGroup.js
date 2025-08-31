@@ -11,7 +11,9 @@ router.post('/', async (req, res) => {
       price, 
       actualRate, 
       finalRate, 
-      discountPercentage, 
+      discountPercentage,
+      minimumQuantity,
+      discountPerUnit,
       location, 
       deliveryAddress,
       deliveryCity,
@@ -41,16 +43,19 @@ router.post('/', async (req, res) => {
     const result = await query(
       `INSERT INTO product_groups (
         product, quantity, price, actual_rate, final_rate, discount_percentage, 
+        minimum_quantity, discount_per_unit,
         location, delivery_address, delivery_city, delivery_state, delivery_pincode,
         deadline, status, created_by, latitude, longitude
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', $13, $14, $15) RETURNING id`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'pending', $15, $16, $17) RETURNING id`,
       [
         product, 
         quantity, 
         price || '', 
         actualRate || '', 
         finalRate || '', 
-        discountPercentage || '', 
+        discountPercentage || '',
+        minimumQuantity || '',
+        discountPerUnit || '',
         location,
         deliveryAddress || '',
         deliveryCity || '',
@@ -107,6 +112,64 @@ router.patch('/:id/status', async (req, res) => {
     res.json({ message: `Product group marked as ${status}` });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update status', details: err.message });
+  }
+});
+
+// Update current_quantity when vendor joins or increases quantity
+router.patch('/:id/current-quantity', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { quantityToAdd } = req.body;
+    
+    if (!quantityToAdd || quantityToAdd <= 0) {
+      return res.status(400).json({ error: 'Invalid quantity to add' });
+    }
+    
+    console.log(`📊 Updating current_quantity for group ${id}, adding ${quantityToAdd}`);
+    
+    // Get current group data
+    const groupResult = await query('SELECT * FROM product_groups WHERE id = $1', [id]);
+    
+    if (groupResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Product group not found' });
+    }
+    
+    const group = groupResult.rows[0];
+    const currentQuantity = parseInt(group.current_quantity) || 0;
+    const targetQuantity = parseInt(group.quantity);
+    const newCurrentQuantity = currentQuantity + parseInt(quantityToAdd);
+    
+    console.log(`📊 Current: ${currentQuantity}, Adding: ${quantityToAdd}, New: ${newCurrentQuantity}, Target: ${targetQuantity}`);
+    
+    // Check if new quantity would exceed target
+    if (newCurrentQuantity > targetQuantity) {
+      return res.status(400).json({ 
+        error: 'Quantity exceeds target',
+        details: `Adding ${quantityToAdd} would exceed target quantity. Available: ${targetQuantity - currentQuantity}` 
+      });
+    }
+    
+    // Update current_quantity
+    const updateResult = await query(
+      'UPDATE product_groups SET current_quantity = $1 WHERE id = $2 RETURNING *',
+      [newCurrentQuantity, id]
+    );
+    
+    const updatedGroup = updateResult.rows[0];
+    const isFull = newCurrentQuantity >= targetQuantity;
+    
+    console.log(`✅ Updated current_quantity to ${newCurrentQuantity}. Group is ${isFull ? 'FULL' : 'OPEN'}`);
+    
+    res.json({ 
+      message: 'Current quantity updated successfully',
+      data: updatedGroup,
+      isFull: isFull,
+      available: targetQuantity - newCurrentQuantity
+    });
+    
+  } catch (err) {
+    console.error('❌ Error updating current_quantity:', err);
+    res.status(500).json({ error: 'Failed to update current quantity', details: err.message });
   }
 });
 

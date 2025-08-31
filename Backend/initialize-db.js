@@ -70,10 +70,13 @@ const initializeDatabase = async () => {
       id SERIAL PRIMARY KEY,
       product TEXT NOT NULL,
       quantity TEXT NOT NULL,
+      current_quantity INTEGER DEFAULT 0,
       price TEXT,
       actual_rate TEXT,
       final_rate TEXT,
       discount_percentage TEXT,
+      minimum_quantity TEXT,
+      discount_per_unit TEXT,
       location TEXT NOT NULL,
       delivery_address TEXT,
       delivery_city TEXT,
@@ -116,6 +119,24 @@ const initializeDatabase = async () => {
     )`);
     console.log('Orders table created successfully (or already exists)');
 
+    // Create vendor_product_groups table to link vendors with product groups
+    await pool.query(`CREATE TABLE IF NOT EXISTS vendor_product_groups (
+      id SERIAL PRIMARY KEY,
+      vendor_id INTEGER NOT NULL,
+      group_id INTEGER NOT NULL,
+      discount_per_unit REAL DEFAULT 0,
+      maximum_price REAL,
+      quantity INTEGER NOT NULL,
+      final_price REAL NOT NULL,
+      status TEXT DEFAULT 'pending',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
+      FOREIGN KEY (group_id) REFERENCES product_groups(id) ON DELETE CASCADE,
+      UNIQUE(vendor_id, group_id)
+    )`);
+    console.log('Vendor product groups table created successfully (or already exists)');
+
     // Create products table for product catalog
     await pool.query(`CREATE TABLE IF NOT EXISTS products (
       id SERIAL PRIMARY KEY,
@@ -152,6 +173,14 @@ const initializeDatabase = async () => {
       DROP TRIGGER IF EXISTS suppliers_updated_at_trigger ON suppliers;
       CREATE TRIGGER suppliers_updated_at_trigger 
         BEFORE UPDATE ON suppliers 
+        FOR EACH ROW 
+        EXECUTE FUNCTION update_updated_at_column();
+    `);
+
+    await pool.query(`
+      DROP TRIGGER IF EXISTS vendor_product_groups_updated_at_trigger ON vendor_product_groups;
+      CREATE TRIGGER vendor_product_groups_updated_at_trigger 
+        BEFORE UPDATE ON vendor_product_groups 
         FOR EACH ROW 
         EXECUTE FUNCTION update_updated_at_column();
     `);

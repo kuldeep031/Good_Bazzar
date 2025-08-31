@@ -233,13 +233,18 @@ router.put('/:id', async (req, res) => {
 router.get('/by-user/:firebaseUserId', async (req, res) => {
   try {
     const { firebaseUserId } = req.params;
+    console.log('Fetching vendor by Firebase UID:', firebaseUserId);
+    
     const result = await query('SELECT * FROM vendors WHERE firebase_user_id = ?', [firebaseUserId]);
     
     if (result.rows.length === 0) {
+      console.log('No vendor found for Firebase UID:', firebaseUserId);
       return res.status(404).json({ error: 'Vendor not found' });
     }
     
     const rawVendor = result.rows[0];
+    console.log('Found vendor:', { id: rawVendor.id, fullName: rawVendor.full_name });
+    
     const vendor = {
       id: rawVendor.id,
       firebaseUserId: rawVendor.firebase_user_id,
@@ -263,46 +268,6 @@ router.get('/by-user/:firebaseUserId', async (req, res) => {
     res.json({ vendor });
   } catch (err) {
     console.error('Error fetching vendor by user ID:', err);
-    res.status(500).json({ error: 'Failed to fetch vendor' });
-  }
-});
-
-// Get vendor by Firebase UID
-router.get('/by-user/:uid', async (req, res) => {
-  try {
-    const { uid } = req.params;
-    console.log('Fetching vendor by Firebase UID:', uid);
-    
-    const result = await query('SELECT * FROM vendors WHERE firebase_user_id = $1', [uid]);
-    
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Vendor not found' });
-    }
-    
-    const rawVendor = result.rows[0];
-    const vendor = {
-      id: rawVendor.id,
-      firebaseUserId: rawVendor.firebase_user_id,
-      fullName: rawVendor.full_name,
-      mobileNumber: rawVendor.mobile_number,
-      languagePreference: rawVendor.language_preference,
-      stallName: rawVendor.stall_name,
-      stallAddress: rawVendor.stall_address,
-      city: rawVendor.city,
-      pincode: rawVendor.pincode,
-      state: rawVendor.state,
-      stallType: rawVendor.stall_type,
-      rawMaterialNeeds: JSON.parse(rawVendor.raw_material_needs || '[]'),
-      preferredDeliveryTime: rawVendor.preferred_delivery_time,
-      latitude: rawVendor.latitude,
-      longitude: rawVendor.longitude,
-      createdAt: rawVendor.created_at,
-      updatedAt: rawVendor.updated_at
-    };
-    
-    res.json({ vendor });
-  } catch (err) {
-    console.error('Error fetching vendor by Firebase UID:', err);
     res.status(500).json({ error: 'Failed to fetch vendor' });
   }
 });

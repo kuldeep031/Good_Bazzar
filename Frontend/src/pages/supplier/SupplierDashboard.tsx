@@ -24,6 +24,8 @@ const SupplierDashboard = () => {
     actualRate: "",
     finalRate: "",
     discountPercentage: "",
+    minimumQuantity: "",
+    discountPerUnit: "",
     location: "", 
     deliveryAddress: "",
     deliveryCity: "",
@@ -1220,6 +1222,37 @@ const SupplierDashboard = () => {
                   </div>
                 </div>
 
+                {/* Business Pricing Information */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-4">Business Pricing Information</h3>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Minimum Quantity (kg)</label>
+                        <input 
+                          type="text" 
+                          value={editFormData?.minimumQuantity || ''} 
+                          onChange={(e) => handleEditInputChange('minimumQuantity', e.target.value)}
+                          className="w-full border rounded px-3 py-2" 
+                          placeholder="e.g., 50 kg minimum order"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Minimum quantity for orders</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Discount Per Unit (₹/kg)</label>
+                        <input 
+                          type="text" 
+                          value={editFormData?.discountPerUnit || ''} 
+                          onChange={(e) => handleEditInputChange('discountPerUnit', e.target.value)}
+                          className="w-full border rounded px-3 py-2" 
+                          placeholder="e.g., ₹2 per kg discount"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Discount offered per unit for bulk orders</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Contact Information */}
                 <div>
                   <h3 className="text-lg font-semibold mb-4">Contact Information</h3>
@@ -1468,6 +1501,32 @@ const SupplierDashboard = () => {
                 </div>
               )}
               
+              {/* Minimum Quantity and Discount Per Unit */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Minimum Quantity *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., 50 kg"
+                    value={newGroup.minimumQuantity}
+                    onChange={e => setNewGroup({ ...newGroup, minimumQuantity: e.target.value })}
+                    className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Minimum quantity for group orders</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Discount Per Unit (₹/kg)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., ₹2 per kg"
+                    value={newGroup.discountPerUnit}
+                    onChange={e => setNewGroup({ ...newGroup, discountPerUnit: e.target.value })}
+                    className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Additional discount for bulk orders</p>
+                </div>
+              </div>
+              
               <div>
                 <label className="block text-sm font-medium mb-2">Delivery Location *</label>
                 <div className="space-y-2">
@@ -1642,6 +1701,8 @@ const SupplierDashboard = () => {
                         actualRate: newGroup.actualRate,
                         finalRate: newGroup.finalRate,
                         discountPercentage: newGroup.discountPercentage,
+                        minimumQuantity: newGroup.minimumQuantity,
+                        discountPerUnit: newGroup.discountPerUnit,
                         location: newGroup.location,
                         deliveryAddress: newGroup.deliveryAddress,
                         deliveryCity: newGroup.deliveryCity,
@@ -1667,6 +1728,8 @@ const SupplierDashboard = () => {
                         actualRate: "",
                         finalRate: "",
                         discountPercentage: "",
+                        minimumQuantity: "",
+                        discountPerUnit: "",
                         location: autoFillLocation && currentLocation ? currentLocation.name : "", 
                         deliveryAddress: "",
                         deliveryCity: "",
